@@ -1,10 +1,26 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ChatOllama } from '@langchain/ollama';
 
+import {
+  StateGraph,
+  StateSchema,
+  ReducedValue,
+  MessagesValue,
+  UntrackedValue,
+  GraphNode,
+  START,
+  END,
+} from '@langchain/langgraph';
+
+const AgentState = new StateSchema({
+  messages: MessagesValue,
+});
+
 @Injectable()
 export class AiService implements OnModuleInit {
   private readonly logger = new Logger(AiService.name);
   private readonly llm: ChatOllama;
+  private readonly graph: any;
 
   constructor() {
     // Connect to local Ollama
@@ -18,7 +34,29 @@ export class AiService implements OnModuleInit {
   // This hook will be called by NestJS automatically after module initialization
   async onModuleInit() {
     this.logger.log('🚀 Initializing AI Incident Orchestrator...');
-    await this.testAiConnection();
+
+    const app = this.buildGraph();
+
+    const result = await app.invoke({ messages: ['hello'] });
+    // await this.testAiConnection();
+
+    this.logger.log(JSON.stringify(result, null, 2));
+  }
+
+  buildGraph() {
+    const builder = new StateGraph(AgentState);
+
+    const myNode: GraphNode<typeof AgentState> = async (state, config) => {
+      // console.dir(state, { depth: null });
+      const response = await this.llm.invoke(state.messages);
+      return { messages: [response] };
+    };
+
+    return builder
+      .addNode('myNode', myNode)
+      .addEdge(START, 'myNode')
+      .addEdge('myNode', END)
+      .compile();
   }
 
   private async testAiConnection() {
